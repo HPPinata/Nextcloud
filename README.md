@@ -7,12 +7,21 @@ OS: OpenSUSE (others possible, just use the appropriate package manager)
 
 Domains: 1 Zone with Wildcard CNAME (completely free) from [dynv6.com](https://dynv6.com)
 
-You can use external storage (format it, then adapt the ``{echo} >> /etc/fstab`` line
-with your %DRIVE%and %FS% and make sure it's no longer commented out)
+Optional: You can use external storage (format it, then adapt the ``{echo} >> /etc/fstab`` line
+with your ``%DRIVE%`` and ``%FS%`` and make sure it's no longer commented out)
 
-Make sure to replace the Variables:
+Make sure to replace all occurences of these Variables:
 ```
-%DOMAIN%
+%TIME%     your Timezone (eg. Europe/Berlin)
+%HNAME%    the hostname on your system
+%DOMAIN%   your dynv6 zone
+%TURNPASS% a secure password for coturn
+%MAIL%     email adress for letsencrypt notifications
+%TOKEN%    dynv6 update token (see zone-info)
+%RP%       mariadb root password
+%UP%       mariadb user password
+%NA%       mariadb database name
+%US%       mariadb user
 ```
 
 ## 1. Host-Setup
@@ -20,6 +29,7 @@ Make sure to replace the Variables:
 zypper in -y cron docker docker-compose
 
 timedatectl set-timezone %TIME%
+echo '%HNAME%' > /etc/hostname
 
 mkdir -p /var/nextcloud/mount
 #{ echo; echo '%DRIVE%  /var/nextcloud/mount  %FS%  defaults  0  0'; } >> /etc/fstab
@@ -160,9 +170,9 @@ cat build/nextcloud/Dockerfile
 ```
 cat <<'EOL' > compose.yml
 services:
-  dynv6:
+  dynv6-container:
     build: ./build/dynv6
-    container_name: dynv6
+    container_name: dynv6-container
     privileged: true
     network_mode: host
     environment:
@@ -181,6 +191,8 @@ services:
     build: ./build/caddy
     container_name: caddy-container
     privileged: true
+    depends_on:
+      - dynv6-container
     network_mode: host
     volumes:
       - caddy_data:/data
