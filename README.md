@@ -7,6 +7,8 @@ OS: OpenSUSE (others possible, just use the appropriate package manager)
 
 Domains: 1 Zone with Wildcard CNAME (completely free) from [dynv6.com](https://dynv6.com)
 
+On your router: Forward ports ``80/tcp``, ``443/tcp``, ``3478/tcp``, ``3478/udp``
+
 Optional: You can use external storage (format it, then adapt the ``{echo} >> /etc/fstab`` line
 with your ``%DRIVE%`` and ``%FS%`` and make sure it's no longer commented out)
 
@@ -30,6 +32,11 @@ zypper in -y cron docker docker-compose
 
 timedatectl set-timezone %TIME%
 echo '%HNAME%' > /etc/hostname
+
+firewall-cmd --permanent --new-service turnserver
+firewall-cmd --permanent --service turnserver --add-port 3478/tcp --add-port 3478/udp
+firewall-cmd --permanent --add-service http --add-service https --add-service turnserver
+systemctl restart firewalld
 
 mkdir -p /var/nextcloud/mount
 #{ echo; echo '%DRIVE%  /var/nextcloud/mount  %FS%  defaults  0  0'; } >> /etc/fstab
