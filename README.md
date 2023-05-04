@@ -28,7 +28,7 @@ Make sure to replace all occurences of these Variables:
 
 ## 1. Host-Setup
 ```
-zypper in -y cron docker docker-compose
+zypper in -y cron docker docker-compose firewalld
 
 timedatectl set-timezone %TIME%
 echo '%HNAME%' > /etc/hostname
@@ -40,10 +40,9 @@ systemctl restart firewalld
 
 mkdir -p /var/nextcloud/mount
 #{ echo; echo '%DRIVE%  /var/nextcloud/mount  %FS%  defaults  0  0'; } >> /etc/fstab
-reboot
+#mount -a
 ```
 
-XXXX
 ## 2. Directories
 ```
 cd /var/nextcloud
