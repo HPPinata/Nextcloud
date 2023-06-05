@@ -15,6 +15,7 @@ with your ``%DRIVE%`` and ``%FS%`` and make sure it's no longer commented out)
 Make sure to replace all occurences of these Variables:
 ```
 %TIME%     your Timezone (eg. Europe/Berlin)
+%KBOARD%   your Keyboard layout (eg. de)
 %HNAME%    the hostname on your system
 %DOMAIN%   your dynv6 zone
 %TURNPASS% a secure password for coturn
@@ -31,6 +32,7 @@ Make sure to replace all occurences of these Variables:
 zypper in -y cron docker docker-compose firewalld
 
 timedatectl set-timezone %TIME%
+localectl set-keymap %KBOARD%
 echo '%HNAME%' > /etc/hostname
 
 firewall-cmd --permanent --new-service turnserver
