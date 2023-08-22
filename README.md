@@ -178,9 +178,9 @@ cat build/nextcloud/Dockerfile
 ```
 cat <<'EOL' > compose.yml
 services:
-  dynv6-container:
+  dynv6:
     build: ./build/dynv6
-    container_name: dynv6-container
+    container_name: dynv6
     privileged: true
     network_mode: host
     environment:
@@ -188,28 +188,28 @@ services:
       - TK=%TOKEN%
     restart: unless-stopped
 
-  coturn-container:
+  coturn:
     build: ./build/coturn
-    container_name: coturn-container
+    container_name: coturn
     privileged: true
     network_mode: host
     restart: unless-stopped
 
-  caddy-container:
+  caddy:
     build: ./build/caddy
-    container_name: caddy-container
+    container_name: caddy
     privileged: true
     depends_on:
-      - dynv6-container
+      - dynv6
     network_mode: host
     volumes:
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
 
-  mariadb-container:
+  mariadb:
     image: mariadb:latest
-    container_name: mariadb-container
+    container_name: mariadb
     privileged: true
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     networks:
@@ -225,24 +225,24 @@ services:
       - MARIADB_DISABLE_UPGRADE_BACKUP=true
     restart: unless-stopped
 
-  redis-container:
+  redis:
     image: redis:alpine
-    container_name: redis-container
+    container_name: redis
     privileged: true
     networks:
       - network
     restart: unless-stopped
 
-  nextcloud-container:
+  nextcloud:
     build: ./build/nextcloud
-    container_name: nextcloud-container
+    container_name: nextcloud
     privileged: true
     depends_on:
-      - coturn-container
-      - caddy-container
-      - redis-container
-      - mariadb-container
-      - collabora-container
+      - coturn
+      - caddy
+      - redis
+      - mariadb
+      - collabora
     networks:
       - network
     ports:
@@ -256,16 +256,16 @@ services:
       - MYSQL_PASSWORD=%UP%
       - MYSQL_DATABASE=%NA%
       - MYSQL_USER=%US%
-      - MYSQL_HOST=mariadb-container
-      - REDIS_HOST=redis-container
+      - MYSQL_HOST=mariadb
+      - REDIS_HOST=redis
     restart: unless-stopped
 
-  collabora-container:
+  collabora:
     image: collabora/code:latest
-    container_name: collabora-container
+    container_name: collabora
     privileged: true
     depends_on:
-      - caddy-container
+      - caddy
     networks:
       - network
     ports:
@@ -316,9 +316,9 @@ docker-compose up -dV
 cd /var/nextcloud
 ```
 ```
-docker exec -u www-data nextcloud-container php occ config:system:set trusted_domains 0 --value %HNAME%
-docker exec -u www-data nextcloud-container php occ config:system:set trusted_domains 1 --value cloud.%DOMAIN%
-docker exec -u www-data nextcloud-container php -i
+docker exec -u www-data nextcloud php occ config:system:set trusted_domains 0 --value %HNAME%
+docker exec -u www-data nextcloud php occ config:system:set trusted_domains 1 --value cloud.%DOMAIN%
+docker exec -u www-data nextcloud php -i
 ```
 
 ### 6.2 config.php
@@ -376,16 +376,16 @@ cat config/config.php
 cat <<'EOL' > update.bash
 #!/bin/bash
 cd /var/nextcloud
-docker exec -u www-data nextcloud-container php occ maintenance:mode --on
+docker exec -u www-data nextcloud php occ maintenance:mode --on
 sleep 5
 docker-compose down
 docker-compose pull
 docker-compose build --pull
 docker-compose up -dV
 sleep 10
-docker exec -u www-data nextcloud-container php occ maintenance:mode --off
+docker exec -u www-data nextcloud php occ maintenance:mode --off
 sleep 5
-docker exec -u www-data nextcloud-container php occ upgrade -n
+docker exec -u www-data nextcloud php occ upgrade -n
 docker system prune -a -f --volumes
 zypper dup -y
 reboot
@@ -397,11 +397,11 @@ chmod +x update.bash
 ## 8. Root Cron
 ```
 cat <<'EOL' | crontab -
-*/5 * * * * docker exec -u www-data nextcloud-container php -f /var/www/html/cron.php
+*/5 * * * * docker exec -u www-data nextcloud php -f /var/www/html/cron.php
 
 */5 * * * * /var/nextcloud/address.bash
 
-0 6 * * * docker exec -u www-data nextcloud-container php occ preview:generate-all
+0 6 * * * docker exec -u www-data nextcloud php occ preview:generate-all
 
 3 3 * * 6 /var/nextcloud/update.bash
 EOL
