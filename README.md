@@ -48,15 +48,14 @@ mkdir -p /var/nextcloud/mount
 ## 2. Directories
 ```
 cd /var/nextcloud
-mkdir -p build/coturn
-mkdir -p build/caddy
+mkdir -p build/dynv6
 mkdir -p build/nextcloud
 ```
 
-## 3. Dockerfiles
+## 3. config files
 ### 3.1 coturn
 ```
-cat <<'EOL' > build/coturn/turnserver.conf
+cat <<'EOL' > ./turnserver.conf
 listening-port=3478
 fingerprint
 use-auth-secret
@@ -67,15 +66,7 @@ bps-capacity=0
 stale-nonce
 no-multicast-peers
 EOL
-cat build/coturn/turnserver.conf
-```
-```
-cat <<'EOL' > build/coturn/Dockerfile
-FROM coturn/coturn:alpine
-
-ADD ./turnserver.conf /etc/coturn/
-EOL
-cat build/coturn/Dockerfile
+cat ./turnserver.conf
 ```
 
 ### 3.2 dynv6
@@ -121,7 +112,7 @@ cat build/dynv6/Dockerfile
 
 ### 3.3 caddy
 ```
-cat <<'EOL' > build/caddy/Caddyfile
+cat <<'EOL' > ./Caddyfile
 {
   email    %MAIL%
   key_type p384
@@ -132,22 +123,14 @@ cat <<'EOL' > build/caddy/Caddyfile
 %HNAME%, cloud.%DOMAIN% {
   redir /.well-known/carddav /remote.php/dav 301
   redir /.well-known/caldav /remote.php/dav 301
-  reverse_proxy localhost:8080
+  reverse_proxy nextcloud-c:80
 }
 
 %HNAME%:9980, office.%DOMAIN% {
-  reverse_proxy localhost:8880
+  reverse_proxy collabora:9980
 }
 EOL
-cat build/caddy/Caddyfile
-```
-```
-cat <<'EOL' > build/caddy/Dockerfile
-FROM caddy:alpine
-
-ADD ./Caddyfile /etc/caddy/Caddyfile
-EOL
-cat build/caddy/Dockerfile
+cat ./Caddyfile
 ```
 
 ### 3.4 nextcloud
@@ -181,7 +164,6 @@ services:
   dynv6:
     build: ./build/dynv6
     container_name: dynv6
-    privileged: true
     network_mode: host
     environment:
       - ZONE=( %DOMAIN% )
@@ -189,20 +171,25 @@ services:
     restart: unless-stopped
 
   coturn:
-    build: ./build/coturn
+    image: coturn/coturn:alpine
     container_name: coturn
-    privileged: true
     network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
     restart: unless-stopped
 
   caddy:
-    build: ./build/caddy
+    image: caddy:alpine
     container_name: caddy
-    privileged: true
     depends_on:
       - dynv6
-    network_mode: host
+    networks:
+      - network
+    ports:
+      - 80:80
+      - 443:443
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
@@ -210,12 +197,11 @@ services:
   mariadb:
     image: mariadb:latest
     container_name: mariadb
-    privileged: true
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     networks:
       - network
     volumes:
-      - db:/var/lib/mysql:rw
+      - db:/var/lib/mysql
     environment:
       - MYSQL_ROOT_PASSWORD=%RP%
       - MYSQL_PASSWORD=%UP%
@@ -228,15 +214,13 @@ services:
   redis:
     image: redis:alpine
     container_name: redis
-    privileged: true
     networks:
       - network
     restart: unless-stopped
 
-  nextcloud:
+  nextcloud-c:
     build: ./build/nextcloud
     container_name: nextcloud
-    privileged: true
     depends_on:
       - coturn
       - caddy
@@ -245,14 +229,12 @@ services:
       - collabora
     networks:
       - network
-    ports:
-      - 8080:80
     volumes:
-      - nextcloud:/var/www/html:rw
-      - ./config:/var/www/html/config:rw
-      - ./mount/data:/var/www/html/data:rw
-      - /etc/localtime:/etc/localtime:ro
+      - nextcloud:/var/www/html
+      - ./config:/var/www/html/config
+      - ./mount/data:/var/www/html/data
     environment:
+      - TZ=Europe/Berlin
       - MYSQL_PASSWORD=%UP%
       - MYSQL_DATABASE=%NA%
       - MYSQL_USER=%US%
@@ -263,17 +245,15 @@ services:
   collabora:
     image: collabora/code:latest
     container_name: collabora
-    privileged: true
     depends_on:
       - caddy
     networks:
       - network
-    ports:
-      - 8880:9980
     cap_add:
       - MKNOD
     environment:
-      - domain=cloud.%DOMAIN%|%HNAME%
+      - domain=cloud.%DOMAIN%
+      - domain=%HNAME%
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true
     restart: unless-stopped
 
@@ -307,7 +287,7 @@ docker-compose up -dV
 
 #### Talk:
   - Stun = turn.%DOMAIN%:3478
-  - Turn = turn.%DOMAIN%
+  - Turn = turn.%DOMAIN%:3478
   - Secret = %TURNPASS%
 
 ## 6. Config
