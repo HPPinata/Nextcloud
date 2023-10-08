@@ -252,8 +252,8 @@ services:
     cap_add:
       - MKNOD
     environment:
-      - domain=cloud.%DOMAIN%
-      - domain=%HNAME%
+      - aliasgroup1=cloud.%DOMAIN%
+      - aliasgroup2=%HNAME%
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true
     restart: unless-stopped
 
@@ -286,8 +286,7 @@ docker-compose up -dV
   - Custom server: https://office.%DOMAIN%
 
 #### Talk:
-  - Stun = turn.%DOMAIN%:3478
-  - Turn = turn.%DOMAIN%:3478
+  - Stun & Turn = turn.%DOMAIN%:3478
   - Secret = %TURNPASS%
 
 ## 6. Config
