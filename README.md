@@ -18,6 +18,7 @@ Make sure to replace all occurences of these Variables:
 %KBOARD%   your Keyboard layout (eg. de)
 %HNAME%    the hostname on your system
 %DOMAIN%   your dynv6 zone
+%ESPASS%   elasticsearch password
 %TURNPASS% a secure password for coturn
 %MAIL%     email adress for letsencrypt notifications
 %TOKEN%    dynv6 update token (see zone-info)
@@ -38,7 +39,7 @@ echo '%HNAME%' > /etc/hostname
 firewall-cmd --permanent --new-service turnserver
 firewall-cmd --permanent --service turnserver --add-port 3478/tcp --add-port 3478/udp
 firewall-cmd --permanent --add-service http --add-service https --add-service turnserver
-systemctl restart firewalld
+firewall-cmd --reload
 
 mkdir -p /var/nextcloud/mount
 #{ echo; echo '%DRIVE%  /var/nextcloud/mount  %FS%  defaults  0  0'; } >> /etc/fstab
@@ -74,24 +75,23 @@ cat ./turnserver.conf
 cat <<'EOL' > build/dynv6/dyndns.bash
 #!/bin/bash
 
-OLD4=$(cat tempaddr4)
-NEW4=$(curl api.ipify.org)
-if [ "$OLD4" != "$NEW4" ]; then
-  for Z in ${ZONE[@]}; do
+ipv4=$(curl -4 api4.ipify.org)
+ipv6=$(curl -6 api6.ipify.org)
+
+for Z in ${ZONE[@]}; do
+  dns4=$(dig -t A +short $Z)
+  if [ "$ipv4" != "$dns4" ]; then
     curl -4 -L "https://ipv4.dynv6.com/api/update?zone=$Z&ipv4=auto&token=$TK"
-  done
-fi
+  fi
+done
 
-OLD6=$(cat tempaddr6)
-NEW6=$(curl api64.ipify.org)
-if [ "$OLD6" != "$NEW6" ]; then
-  for Z in ${ZONE[@]}; do
+for Z in ${ZONE[@]}; do
+  dns6=$(dig -t AAAA +short $Z)
+  if [ "$ipv6" != "$dns6" ]; then
     curl -6 -L "https://ipv6.dynv6.com/api/update?zone=$Z&ipv6=auto&ipv6prefix=auto&token=$TK"
-  done
-fi
+  fi
+done
 
-echo $NEW4 > tempaddr4
-echo $NEW6 > tempaddr6
 sleep 300
 EOL
 cat build/dynv6/dyndns.bash
@@ -100,7 +100,7 @@ cat build/dynv6/dyndns.bash
 cat <<'EOL' > build/dynv6/Dockerfile
 FROM alpine:latest
 
-RUN apk add --no-cache curl bash
+RUN apk add --no-cache bash curl bind-tools
 
 ADD ./dyndns.bash /
 RUN chmod +x ./dyndns.bash
@@ -112,7 +112,11 @@ cat build/dynv6/Dockerfile
 
 ### 3.3 caddy
 ```
-cat <<'EOL' > ./Caddyfile
+set +H
+phash=$(docker run --rm caddy:alpine caddy hash-password --plaintext %ESPASS%)
+```
+```
+cat <<EOL > ./Caddyfile
 {
   email    %MAIL%
   key_type p384
@@ -126,7 +130,14 @@ cat <<'EOL' > ./Caddyfile
   reverse_proxy nextcloud-c:80
 }
 
-%HNAME%:9980, office.%DOMAIN% {
+elastic.%DOMAIN% {
+  basicauth * {
+    elastic $phash
+  }
+  reverse_proxy elasticsearch:9200
+}
+
+office.%DOMAIN% {
   reverse_proxy collabora:9980
 }
 EOL
@@ -147,7 +158,8 @@ cat <<'EOL' > build/nextcloud/Dockerfile
 FROM nextcloud:apache
 
 RUN export DEBIAN_FRONTEND=noninteractive; \
-    apt update && apt full-upgrade -y && apt install -y ffmpeg imagemagick
+    apt update && apt full-upgrade -y; \
+    apt install -y ffmpeg imagemagick tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
 
 RUN sed -i 's+rights="none" pattern="PDF"+rights="read|write" pattern="PDF"+g' /etc/ImageMagick-6/policy.xml; \
     cat /etc/ImageMagick-6/policy.xml
@@ -220,12 +232,13 @@ services:
 
   nextcloud-c:
     build: ./build/nextcloud
-    container_name: nextcloud
+    container_name: nextcloud-c
     depends_on:
       - coturn
       - caddy
       - redis
       - mariadb
+      - elasticsearch
       - collabora
     networks:
       - network
@@ -234,12 +247,23 @@ services:
       - ./config:/var/www/html/config
       - ./mount/data:/var/www/html/data
     environment:
-      - TZ=Europe/Berlin
+      - TZ=%TIME%
       - MYSQL_PASSWORD=%UP%
       - MYSQL_DATABASE=%NA%
       - MYSQL_USER=%US%
       - MYSQL_HOST=mariadb
       - REDIS_HOST=redis
+    restart: unless-stopped
+
+  elasticsearch:
+    image: bitnami/elasticsearch:8
+    container_name: elasticsearch
+    networks:
+      - network
+    volumes:
+      - elasticsearch:/bitnami/elasticsearch/data
+    environment:
+      - TZ=%TIME%
     restart: unless-stopped
 
   collabora:
@@ -252,8 +276,8 @@ services:
     cap_add:
       - MKNOD
     environment:
-      - aliasgroup1=cloud.%DOMAIN%
-      - aliasgroup2=%HNAME%
+      - aliasgroup1=https://cloud.%DOMAIN%:443
+      - aliasgroup2=https://%HNAME%:443
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true
     restart: unless-stopped
 
@@ -261,6 +285,7 @@ volumes:
   caddy_data:
   caddy_config:
   db:
+  elasticsearch:
   nextcloud:
 
 networks:
@@ -269,17 +294,18 @@ EOL
 cat compose.yml
 ```
 ```
-docker-compose pull
-docker-compose build --pull
+docker compose pull
+docker compose build --pull
 ```
 ```
-docker-compose up -dV
+docker compose up -dV
 ```
 
 ## 5. Apps and Settings
 ### Apps:
   - Hub: Nextcloud Office and Talk
   - Multimedia: Preview Generator
+  - Search: Full text search & –Elasticsearch Platform, –Files, –Files–Tesseract OCR
 
 ### Settings:
 #### Collabora:
@@ -289,15 +315,21 @@ docker-compose up -dV
   - Stun & Turn = turn.%DOMAIN%:3478
   - Secret = %TURNPASS%
 
+#### Fulltext Search:
+  - Adresse = https://elastic:%ESPASS%@elastic.%DOMAIN%
+  - Index = cloud
+  - Tokenizer = standard
+  - Languages = eng,de
+
 ## 6. Config
 ### 6.1 PHP parameter info
 ```
 cd /var/nextcloud
 ```
 ```
-docker exec -u www-data nextcloud php occ config:system:set trusted_domains 0 --value %HNAME%
-docker exec -u www-data nextcloud php occ config:system:set trusted_domains 1 --value cloud.%DOMAIN%
-docker exec -u www-data nextcloud php -i
+docker exec -u www-data nextcloud-c php occ config:system:set trusted_domains 0 --value %HNAME%
+docker exec -u www-data nextcloud-c php occ config:system:set trusted_domains 1 --value cloud.%DOMAIN%
+docker exec -u www-data nextcloud-c php -i
 ```
 
 ### 6.2 config.php
@@ -306,18 +338,19 @@ VAR=$(cat <<'EOL'
   'enable_previews' => true,
   'enabledPreviewProviders' =>
   array (
-      'OC\Preview\PNG',
-      'OC\Preview\JPEG',
-      'OC\Preview\GIF',
       'OC\Preview\BMP',
-      'OC\Preview\XBitmap',
-      'OC\Preview\MP3',
-      'OC\Preview\TXT',
-      'OC\Preview\MarkDown',
-      'OC\Preview\OpenDocument',
+      'OC\Preview\GIF',
+      'OC\Preview\JPEG',
       'OC\Preview\Krita',
-      'OC\Preview\Illustrator',
+      'OC\Preview\MarkDown',
+      'OC\Preview\MP3',
+      'OC\Preview\OpenDocument',
+      'OC\Preview\PNG',
+      'OC\Preview\TXT',
+      'OC\Preview\XBitmap',
+      'OC\Preview\Font',
       'OC\Preview\HEIC',
+      'OC\Preview\Illustrator',
       'OC\Preview\Movie',
       'OC\Preview\MSOffice2003',
       'OC\Preview\MSOffice2007',
@@ -328,7 +361,7 @@ VAR=$(cat <<'EOL'
       'OC\Preview\StarOffice',
       'OC\Preview\SVG',
       'OC\Preview\TIFF',
-      'OC\Preview\Font',
+      'OC\Preview\EMF',
   ),
   'datadirectory'
 EOL
@@ -354,17 +387,18 @@ cat config/config.php
 ```
 cat <<'EOL' > update.bash
 #!/bin/bash
+
 cd /var/nextcloud
-docker exec -u www-data nextcloud php occ maintenance:mode --on
+docker exec -u www-data nextcloud-c php occ maintenance:mode --on
 sleep 5
-docker-compose down
-docker-compose pull
-docker-compose build --pull
-docker-compose up -dV
+docker compose down
+docker compose pull
+docker compose build --pull
+docker compose up -dV
 sleep 10
-docker exec -u www-data nextcloud php occ maintenance:mode --off
+docker exec -u www-data nextcloud-c php occ maintenance:mode --off
 sleep 5
-docker exec -u www-data nextcloud php occ upgrade -n
+docker exec -u www-data nextcloud-c php occ upgrade -n
 docker system prune -a -f --volumes
 zypper dup -y
 reboot
@@ -376,12 +410,11 @@ chmod +x update.bash
 ## 8. Root Cron
 ```
 cat <<'EOL' | crontab -
-*/5 * * * * docker exec -u www-data nextcloud php -f /var/www/html/cron.php
 
-*/5 * * * * /var/nextcloud/address.bash
-
-0 6 * * * docker exec -u www-data nextcloud php occ preview:generate-all
-
+*/5 * * * * docker exec -u www-data nextcloud-c php -f /var/www/html/cron.php
+*/5 * * * * docker exec -u www-data nextcloud-c php occ files:scan --all
+*/5 * * * * docker exec -u www-data nextcloud-c php occ fulltextsearch:index
+0 6 * * * docker exec -u www-data nextcloud-c php occ preview:generate-all
 3 3 * * 6 /var/nextcloud/update.bash
 EOL
 crontab -l
