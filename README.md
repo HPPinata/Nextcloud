@@ -195,8 +195,6 @@ services:
     container_name: caddy
     depends_on:
       - dynv6
-    networks:
-      - network
     ports:
       - 80:80
       - 443:443
@@ -210,8 +208,6 @@ services:
     image: mariadb:latest
     container_name: mariadb
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
-    networks:
-      - network
     volumes:
       - db:/var/lib/mysql
     environment:
@@ -226,8 +222,6 @@ services:
   redis:
     image: redis:alpine
     container_name: redis
-    networks:
-      - network
     restart: unless-stopped
 
   nextcloud-c:
@@ -240,8 +234,6 @@ services:
       - mariadb
       - elasticsearch
       - collabora
-    networks:
-      - network
     volumes:
       - nextcloud:/var/www/html
       - ./config:/var/www/html/config
@@ -258,8 +250,6 @@ services:
   elasticsearch:
     image: bitnami/elasticsearch:8
     container_name: elasticsearch
-    networks:
-      - network
     volumes:
       - elasticsearch:/bitnami/elasticsearch/data
     environment:
@@ -271,8 +261,6 @@ services:
     container_name: collabora
     depends_on:
       - caddy
-    networks:
-      - network
     cap_add:
       - MKNOD
     environment:
@@ -287,9 +275,6 @@ volumes:
   db:
   elasticsearch:
   nextcloud:
-
-networks:
-  network:
 EOL
 cat compose.yml
 ```
