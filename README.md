@@ -124,20 +124,20 @@ cat <<EOL > ./Caddyfile
   #local_certs
 }
 
-%HNAME%, cloud.%DOMAIN% {
+https://%HNAME%, https://cloud.%DOMAIN% {
   redir /.well-known/carddav /remote.php/dav 301
   redir /.well-known/caldav /remote.php/dav 301
   reverse_proxy nextcloud-c:80
 }
 
-elastic.%DOMAIN% {
+https://elastic.%DOMAIN% {
   basicauth * {
     elastic $phash
   }
   reverse_proxy elasticsearch:9200
 }
 
-office.%DOMAIN% {
+https://office.%DOMAIN% {
   reverse_proxy collabora:9980
 }
 EOL
