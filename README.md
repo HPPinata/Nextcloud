@@ -119,7 +119,6 @@ phash=$(docker run --rm caddy:alpine caddy hash-password --plaintext %ESPASS%)
 cat <<EOL > ./Caddyfile
 {
   email    %MAIL%
-  key_type p384
   #acme_ca  https://acme-staging-v02.api.letsencrypt.org/directory
   #local_certs
 }
